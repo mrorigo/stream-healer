@@ -1,0 +1,19 @@
+{
+    "plugins": [
+        "typescript"
+    ],
+    "rules": {
+        "typescript/consistent-type-imports": "error",
+        "typescript/no-import-type-side-effects": "error"
+    },
+    "categories": {
+        "correctness": "error",
+        "suspicious": "warn"
+    },
+    "ignorePatterns": [
+        "dist",
+        "node_modules",
+        "coverage",
+        "**/*.d.ts"
+    ]
+}

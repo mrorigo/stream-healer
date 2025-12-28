@@ -1,0 +1,16 @@
+{
+  "name": "stream-healer",
+  "module": "src/index.ts",
+  "type": "module",
+  "scripts": {
+    "lint": "oxlint && tsc --noEmit",
+    "test": "bun test"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "oxlint": "^1.35.0"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  }
+}
