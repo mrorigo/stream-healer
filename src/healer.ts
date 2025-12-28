@@ -20,7 +20,12 @@ export interface JsonSchema {
     required?: string[];
     items?: JsonSchema;
     default?: unknown;
-    $ref?: string; // (Note: Full ref resolution is complex, this is a basic stub)
+    $ref?: string;
+    definitions?: Record<string, JsonSchema>;
+    $defs?: Record<string, JsonSchema>;
+    components?: {
+        schemas?: Record<string, JsonSchema>;
+    };
 }
 
 export class StreamHealer {
@@ -182,6 +187,23 @@ export class StreamHealer {
     }
 
     /**
+     * Resolves a JSON pointer reference (e.g. "#/definitions/MyType") to a schema node.
+     */
+    private resolveRef(ref: string): JsonSchema | undefined {
+        if (!ref.startsWith('#/')) return undefined; // Only local refs supported
+
+        const parts = ref.slice(2).split('/');
+        let current: any = this.schema;
+
+        for (const part of parts) {
+            if (!current || typeof current !== 'object') return undefined;
+            current = current[part];
+        }
+
+        return current as JsonSchema;
+    }
+
+    /**
      * Helper: Traverse the stack/schema to find missing keys for a specific stack frame.
      */
     private getMissingRequiredKeys(stackIndex: number): Array<{ key: string, defaultValue?: unknown }> {
@@ -193,6 +215,15 @@ export class StreamHealer {
 
         for (let i = 0; i <= stackIndex; i++) {
             if (!currentSchema) break;
+
+            // Resolve $ref if present
+            if (currentSchema.$ref) {
+                const resolved = this.resolveRef(currentSchema.$ref);
+                if (resolved) {
+                    currentSchema = resolved;
+                }
+            }
+
             const frame = this.stack[i];
             if (!frame) break;
 

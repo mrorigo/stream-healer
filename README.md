@@ -238,9 +238,44 @@ interface JsonSchema {
   properties?: Record<string, JsonSchema>;
   required?: string[];
   items?: JsonSchema;
-  default?: any;
-  $ref?: string;  // Note: Full $ref resolution not implemented
+  default?: unknown;
+  $ref?: string;
+  definitions?: Record<string, JsonSchema>;
+  $defs?: Record<string, JsonSchema>;
+  components?: {
+    schemas?: Record<string, JsonSchema>;
+  };
 }
+```
+
+- [x] Full `$ref` Resolution: Supports generic local references (e.g., `#/definitions/MyType`).
+- [x] Schema Defaults: Automatically applies `default` values from referenced schemas.
+
+### Example with `$ref`
+
+```typescript
+const schema = {
+  type: 'object',
+  required: ['user'],
+  definitions: {
+    Person: {
+      type: 'object',
+      required: ['name', 'status'],
+      properties: {
+        name: { type: 'string' },
+        status: { type: 'string', default: 'active' }
+      }
+    }
+  },
+  properties: {
+    user: { $ref: '#/definitions/Person' }
+  }
+};
+
+const healer = new StreamHealer(schema);
+healer.process('{"user": { "name": "Alice"');
+// Healer resolves "Person" ref, sees "status" is required, and injects default
+console.log(healer.finish()); // Output: ,"status":"active"}}
 ```
 
 ## 🧪 Testing
@@ -264,6 +299,7 @@ bun test
 - Complex scenarios (7 tests)
 - Edge cases (4 tests)
 - Proxy integration (5 tests)
+- Reference resolution (5 tests)
 
 ## 🎯 Use Cases
 
@@ -378,7 +414,7 @@ healer.finish();  // Closes nested structures and injects email
 
 ## 🐛 Limitations
 
-- **$ref Resolution**: Full JSON Schema `$ref` resolution is not implemented
+- **$ref Resolution**: Supports standard local references (`#/definitions/...`, `#/components/...`). External file references are not supported.
 - **Nested Schema Tracking**: Schema injection works best at the root level
 - **Primitive Validation**: No type coercion (e.g., `"123"` → `123`)
 - **Array Items**: Schema validation for array items is basic
