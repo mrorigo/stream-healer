@@ -1,5 +1,5 @@
 {
-  "name": "stream-healer",
+  "name": "openai-json-stream-healer",
   "module": "src/index.ts",
   "type": "module",
   "scripts": {

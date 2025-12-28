@@ -1,4 +1,4 @@
-# 🏥 stream-healer
+# 🏥 openai-json-stream-healer
 
 > A robust library and proxy for repairing broken JSON streams from LLMs, ensuring strict schema compliance and structural integrity.
 
@@ -12,20 +12,20 @@ LLMs frequently produce **broken JSON** when streaming responses:
 - 📋 Missing required fields: Schema expects `email` but LLM stops early
 - 🌊 Truncated streams: Connection drops mid-response
 
-**stream-healer** fixes all of these issues in real-time, making LLM JSON output production-ready.
+**openai-json-stream-healer** fixes all of these issues in real-time, making LLM JSON output production-ready.
 
 ## ✨ Features
 
-| Feature                  | Description                                           |
-| ------------------------ | ----------------------------------------------------- |
-| 🔧 **Preamble Stripping** | Automatically removes conversational text before JSON |
-| 🔒 **Auto-Closing**       | Fixes unclosed braces, brackets, and strings          |
-| 📋 **Schema Enforcement** | Injects missing required fields with `null` values    |
-| 🌊 **Streaming Support**  | Works with both streaming and non-streaming responses |
-| 🔌 **OpenAI Compatible**  | Drop-in proxy for any OpenAI-style API                |
-| 🦙 **Ollama Ready**       | Pre-configured for local Ollama (localhost:11434)     |
-| ⚡ **Zero Dependencies**  | Built on Bun's native APIs                            |
-| 🧪 **Fully Tested**       | 31 tests covering all edge cases                      |
+| Feature                  | Description                                            |
+| ------------------------ | ------------------------------------------------------ |
+| 🔧 **Preamble Stripping** | Automatically removes conversational text before JSON  |
+| 🔒 **Auto-Closing**       | Fixes unclosed braces, brackets, and strings           |
+| 📋 **Schema Enforcement** | Injects missing fields with `default` values or `null` |
+| 🌊 **Streaming Support**  | Works with both streaming and non-streaming responses  |
+| 🔌 **OpenAI Compatible**  | Drop-in proxy for any OpenAI-style API                 |
+| 🦙 **Ollama Ready**       | Pre-configured for local Ollama (localhost:11434)      |
+| ⚡ **Zero Dependencies**  | Built on Bun's native APIs                             |
+| 🧪 **Fully Tested**       | 32 tests covering all edge cases                       |
 
 ## 📦 Installation
 
@@ -46,7 +46,7 @@ bun run src/index.ts
 ```
 🏥 Stream Healer Proxy running on http://localhost:1143
 📡 Forwarding to: http://localhost:11434/v1
-🤖 Default model: gemma2:2b
+🤖 Default model: gemma3:4b
 ```
 
 Now make requests through the proxy:
@@ -55,7 +55,7 @@ Now make requests through the proxy:
 curl -X POST http://localhost:1143/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "gemma2:2b",
+    "model": "gemma3:4b",
     "messages": [
       {"role": "user", "content": "Generate a user profile with name, email, and age"}
     ],
@@ -78,9 +78,9 @@ curl -X POST http://localhost:1143/v1/chat/completions \
 ```
 
 **What happens:**
-1. Request forwarded to Ollama
+1. Request forwarded to Ollama (with `default` values stripped for compatibility)
 2. LLM returns: `Sure! Here's a profile: {"name": "Alice", "email": "alice@example.com"`
-3. Proxy heals it to: `{"name": "Alice", "email": "alice@example.com", "age": null}`
+3. Proxy heals it using schema defaults: `{"name": "Alice", "email": "alice@example.com", "age": null}`
 4. You get valid, complete JSON ✅
 
 ### Option 2: Library Usage
@@ -88,7 +88,7 @@ curl -X POST http://localhost:1143/v1/chat/completions \
 Use `StreamHealer` directly in your code:
 
 ```typescript
-import { StreamHealer } from 'stream-healer';
+import { StreamHealer } from 'openai-json-stream-healer';
 
 const schema = {
   type: 'object',
@@ -151,14 +151,15 @@ Fixes incomplete JSON:
 + {"users": [{"name": "Alice"}, {"name": "Bob"}]}
 ```
 
-### 3. Schema Injection
+### 3. Schema Injection (with Defaults)
 
-Adds missing required fields:
+Adds missing required fields using the provided `default` value, or `null` if none specified:
 
 ```typescript
-// Schema requires: ["id", "name", "email"]
-// LLM returns: {"id": 1, "name": "Alice"
-// Healed output: {"id": 1, "name": "Alice", "email": null}
+// Schema requires: ["id", "status"]
+// "status" has default: "active"
+// LLM returns: {"id": 1
+// Healed output: {"id": 1, "status": "active"}
 ```
 
 ### 4. Streaming Support
@@ -237,6 +238,7 @@ interface JsonSchema {
   properties?: Record<string, JsonSchema>;
   required?: string[];
   items?: JsonSchema;
+  default?: any;
   $ref?: string;  // Note: Full $ref resolution not implemented
 }
 ```
@@ -250,9 +252,9 @@ bun test
 ```
 
 **Coverage:**
-- ✅ 26 unit tests for `StreamHealer`
+- ✅ 27 unit tests for `StreamHealer`
 - ✅ 5 integration tests for proxy server
-- ✅ 48 assertions total
+- ✅ 49 assertions total
 - ✅ 100% pass rate
 
 **Test categories:**

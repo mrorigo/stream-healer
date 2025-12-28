@@ -93,6 +93,20 @@ describe('StreamHealer', () => {
             expect(healer.finish()).toBe(',"b":null}');
         });
 
+        test('should inject missing required fields with default values', () => {
+            const schema: JsonSchema = {
+                type: 'object',
+                required: ['a', 'b', 'c'],
+                properties: {
+                    b: { type: 'string', default: 'default_value' },
+                    c: { type: 'number', default: 42 }
+                }
+            };
+            const healer = new StreamHealer(schema);
+            healer.process('{"a": 1');
+
+            expect(healer.finish()).toBe(',"b":"default_value","c":42}');
+        });
         test('should not inject fields that are present', () => {
             const schema: JsonSchema = {
                 type: 'object',

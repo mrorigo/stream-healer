@@ -3,7 +3,7 @@ import { StreamHealer, type JsonSchema } from './healer.ts';
 const UPSTREAM_BASE_URL = process.env['UPSTREAM_BASE_URL'] || 'http://localhost:11434/v1';
 const UPSTREAM_API_KEY = process.env['UPSTREAM_API_KEY'] || '';
 const PORT = parseInt(process.env['PORT'] || '1143', 10);
-const DEFAULT_MODEL = process.env['DEFAULT_MODEL'] || 'gemma2:2b';
+const DEFAULT_MODEL = process.env['DEFAULT_MODEL'] || 'gemma3:4b';
 
 interface ChatCompletionRequest {
     model?: string;
@@ -56,6 +56,13 @@ export function createProxy() {
                 const schema = body.response_format?.type === 'json_schema'
                     ? body.response_format.json_schema?.schema
                     : undefined;
+
+                // Strip 'default' from schema for upstream if it exists
+                if (body.response_format?.json_schema?.schema) {
+                    body.response_format.json_schema.schema = stripDefaults(
+                        JSON.parse(JSON.stringify(body.response_format.json_schema.schema))
+                    );
+                }
 
                 // Set default model if not specified
                 if (!body.model) {
@@ -204,6 +211,28 @@ export function createProxy() {
             }
         },
     });
+}
+
+/**
+ * Recursively removes 'default' keys from a JSON schema object.
+ */
+function stripDefaults(schema: any): any {
+    if (typeof schema !== 'object' || schema === null) {
+        return schema;
+    }
+
+    if (Array.isArray(schema)) {
+        return schema.map(stripDefaults);
+    }
+
+    const newSchema = { ...schema };
+    delete newSchema.default;
+
+    for (const key in newSchema) {
+        newSchema[key] = stripDefaults(newSchema[key]);
+    }
+
+    return newSchema;
 }
 
 // Start server if run directly

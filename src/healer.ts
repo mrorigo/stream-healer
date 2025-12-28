@@ -19,6 +19,7 @@ export interface JsonSchema {
     properties?: Record<string, JsonSchema>;
     required?: string[];
     items?: JsonSchema;
+    default?: unknown;
     $ref?: string; // (Note: Full ref resolution is complex, this is a basic stub)
 }
 
@@ -109,7 +110,10 @@ export class StreamHealer {
                     // For safety, we prepend comma if we have seen keys.
                     const needsComma = frame.keysSeen.size > 0;
 
-                    const injection = missing.map(k => `"${k}":null`).join(',');
+                    const injection = missing.map(({ key, defaultValue }) => {
+                        const val = defaultValue !== undefined ? JSON.stringify(defaultValue) : 'null';
+                        return `"${key}":${val}`;
+                    }).join(',');
                     closure += (needsComma ? ',' : '') + injection;
                 }
             }
@@ -180,7 +184,7 @@ export class StreamHealer {
     /**
      * Helper: Traverse the stack/schema to find missing keys for a specific stack frame.
      */
-    private getMissingRequiredKeys(stackIndex: number): string[] {
+    private getMissingRequiredKeys(stackIndex: number): Array<{ key: string, defaultValue?: unknown }> {
         if (!this.schema) return [];
 
         // 1. Resolve the sub-schema for the current stack frame
@@ -195,7 +199,12 @@ export class StreamHealer {
             if (i === stackIndex) {
                 // We reached the target frame. Check requirements.
                 if (currentSchema.type === 'object' && currentSchema.required) {
-                    return currentSchema.required.filter(req => !frame.keysSeen.has(req));
+                    return currentSchema.required
+                        .filter(req => !frame.keysSeen.has(req))
+                        .map(req => ({
+                            key: req,
+                            defaultValue: currentSchema?.properties?.[req]?.default
+                        }));
                 }
                 return [];
             }
