@@ -4,6 +4,8 @@
  * 1. Preamble Stripping: Removes conversational text before JSON starts.
  * 2. Auto-Closing: Fixes unclosed braces/brackets.
  * 3. Schema Enforcement: Injects missing required fields with null values if stream truncates.
+ * 
+ * NOTE: For reference only, implementation not fully complete.
  */
 
 interface StackFrame {
