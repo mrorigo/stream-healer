@@ -1,8 +1,6 @@
 import { StreamHealer, type JsonSchema } from './healer.ts';
 
-const UPSTREAM_BASE_URL = process.env['UPSTREAM_BASE_URL'] || 'http://localhost:11434/v1';
 const UPSTREAM_API_KEY = process.env['UPSTREAM_API_KEY'] || '';
-const PORT = parseInt(process.env['PORT'] || '1143', 10);
 const DEFAULT_MODEL = process.env['DEFAULT_MODEL'] || 'gemma3:4b';
 
 interface ChatCompletionRequest {
@@ -35,12 +33,17 @@ interface ChatCompletionChunk {
     }>;
 }
 
+const DEFAULT_PORT = 1143;
+const DEFAULT_UPSTREAM = 'http://localhost:11434/v1';
+
 /**
  * Creates an OpenAI-compatible proxy server that heals broken JSON streams.
  */
-export function createProxy() {
+export function createProxy(port?: number, upstreamBaseUrl?: string) {
+    const upstreamBase = upstreamBaseUrl || process.env['UPSTREAM_BASE_URL'] || DEFAULT_UPSTREAM;
+
     return Bun.serve({
-        port: PORT,
+        port: port || parseInt(process.env['PORT'] || DEFAULT_PORT.toString(), 10),
         async fetch(req) {
             const url = new URL(req.url);
 
@@ -52,16 +55,23 @@ export function createProxy() {
             try {
                 const body = await req.json() as ChatCompletionRequest;
 
-                // Extract schema if present
-                const schema = body.response_format?.type === 'json_schema'
-                    ? body.response_format.json_schema?.schema
-                    : undefined;
+                // Determine if we should heal based on response_format
+                let schema: JsonSchema | undefined;
+                let shouldHeal = false;
 
-                // Strip 'default' from schema for upstream if it exists
-                if (body.response_format?.json_schema?.schema) {
-                    body.response_format.json_schema.schema = stripDefaults(
-                        JSON.parse(JSON.stringify(body.response_format.json_schema.schema))
-                    );
+                if (body.response_format) {
+                    if (body.response_format.type === 'json_schema' && body.response_format.json_schema?.schema) {
+                        schema = body.response_format.json_schema.schema;
+                        shouldHeal = true;
+
+                        // Strip 'default' from schema for upstream compatibility 
+                        body.response_format.json_schema.schema = stripDefaults(
+                            JSON.parse(JSON.stringify(schema))
+                        );
+                    } else if (body.response_format.type === 'json_object') {
+                        shouldHeal = true;
+                        // For json_object, we heal without a specific schema (just valid JSON structure)
+                    }
                 }
 
                 // Set default model if not specified
@@ -70,7 +80,7 @@ export function createProxy() {
                 }
 
                 // Forward request to upstream
-                const upstreamUrl = `${UPSTREAM_BASE_URL}/chat/completions`;
+                const upstreamUrl = `${upstreamBase}/chat/completions`;
                 const headers: Record<string, string> = {
                     'Content-Type': 'application/json',
                 };
@@ -113,55 +123,58 @@ export function createProxy() {
                                     const { done, value } = await reader.read();
 
                                     if (done) {
-                                        // Send final healing closure
-                                        const closure = healer.finish();
-                                        if (closure) {
-                                            // We need to wrap the closure in a proper SSE chunk
-                                            // Extract the last chunk to get the structure
-                                            const finalChunk = `data: {"choices":[{"delta":{"content":"${closure.replace(/"/g, '\\"')}"}}]}\n\n`;
-                                            controller.enqueue(encoder.encode(finalChunk));
-                                        }
-                                        controller.enqueue(encoder.encode('data: [DONE]\n\n'));
-                                        controller.close();
-                                        break;
-                                    }
-
-                                    buffer += decoder.decode(value, { stream: true });
-                                    const lines = buffer.split('\n');
-                                    buffer = lines.pop() || '';
-
-                                    for (const line of lines) {
-                                        if (line.startsWith('data: ')) {
-                                            const data = line.slice(6);
-
-                                            if (data === '[DONE]') {
-                                                continue; // We'll send our own [DONE] after healing
+                                        // Send final healing closure if valid
+                                        if (shouldHeal) {
+                                            const closure = healer.finish();
+                                            if (closure) {
+                                                // We need to wrap the closure in a proper SSE chunk
+                                                // Extract the last chunk to get the structure
+                                                const finalChunk = `data: {"choices":[{"delta":{"content":"${closure.replace(/"/g, '\\"')}"}}]}\n\n`;
+                                                controller.enqueue(encoder.encode(finalChunk));
                                             }
+                                            controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+                                            controller.close();
+                                            break;
+                                        }
 
-                                            try {
-                                                const chunk = JSON.parse(data) as ChatCompletionChunk;
-                                                const content = chunk.choices[0]?.delta?.content;
+                                        const decoded = decoder.decode(value, { stream: true });
+                                        buffer += decoded;
+                                        const lines = buffer.split('\n');
+                                        buffer = lines.pop() || '';
 
-                                                if (content) {
-                                                    // Heal the content
-                                                    const healed = healer.process(content);
+                                        for (const line of lines) {
+                                            if (line.startsWith('data: ')) {
+                                                const data = line.slice(6);
 
-                                                    // Send healed chunk
-                                                    if (healed && chunk.choices[0]) {
-                                                        chunk.choices[0].delta.content = healed;
-                                                        controller.enqueue(encoder.encode(`data: ${JSON.stringify(chunk)}\n\n`));
+                                                if (data === '[DONE]') {
+                                                    continue; // We'll send our own [DONE] after healing
+                                                }
+
+                                                try {
+                                                    const chunk = JSON.parse(data) as ChatCompletionChunk;
+                                                    const content = chunk.choices[0]?.delta?.content;
+
+                                                    if (content) {
+                                                        // Heal if requested, otherwise pass through
+                                                        const healed = shouldHeal ? healer.process(content) : content;
+
+                                                        // Send chunk
+                                                        if (healed && chunk.choices[0]) {
+                                                            chunk.choices[0].delta.content = healed;
+                                                            controller.enqueue(encoder.encode(`data: ${JSON.stringify(chunk)}\n\n`));
+                                                        }
+                                                    } else {
+                                                        // Pass through non-content chunks
+                                                        controller.enqueue(encoder.encode(`${line}\n`));
                                                     }
-                                                } else {
-                                                    // Pass through non-content chunks
+                                                } catch (e) {
+                                                    // If not valid JSON, pass through
                                                     controller.enqueue(encoder.encode(`${line}\n`));
                                                 }
-                                            } catch (e) {
-                                                // If not valid JSON, pass through
+                                            } else if (line.trim()) {
+                                                // Pass through non-data lines
                                                 controller.enqueue(encoder.encode(`${line}\n`));
                                             }
-                                        } else if (line.trim()) {
-                                            // Pass through non-data lines
-                                            controller.enqueue(encoder.encode(`${line}\n`));
                                         }
                                     }
                                 }
@@ -187,7 +200,7 @@ export function createProxy() {
                     [key: string]: unknown;
                 };
 
-                if (schema && responseData.choices?.[0]?.message?.content) {
+                if (shouldHeal && responseData.choices?.[0]?.message?.content) {
                     const healer = new StreamHealer(schema);
                     const content = responseData.choices[0].message.content;
                     const healed = healer.process(content) + healer.finish();
@@ -236,9 +249,4 @@ function stripDefaults(schema: any): any {
 }
 
 // Start server if run directly
-if (import.meta.main) {
-    const server = createProxy();
-    console.log(`🏥 Stream Healer Proxy running on http://localhost:${server.port}`);
-    console.log(`📡 Forwarding to: ${UPSTREAM_BASE_URL}`);
-    console.log(`🤖 Default model: ${DEFAULT_MODEL}`);
-}
+

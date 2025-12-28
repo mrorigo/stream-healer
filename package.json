@@ -1,16 +1,54 @@
 {
   "name": "openai-json-stream-healer",
-  "module": "src/index.ts",
-  "type": "module",
+  "version": "1.0.0",
+  "description": "Middleware that heals broken JSON streams from LLMs in real-time.",
+  "keywords": [
+    "openai",
+    "llm",
+    "json",
+    "stream",
+    "healing",
+    "proxy",
+    "middleware",
+    "ai"
+  ],
+  "author": "Stream Healer Contributors",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mrorigo/openai-json-stream-healer.git"
+  },
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    }
+  },
+  "bin": {
+    "openai-json-stream-healer": "./dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
+    "build": "tsup src/index.ts src/cli.ts --format cjs,esm --dts --clean",
     "lint": "oxlint && tsc --noEmit",
-    "test": "bun test"
+    "test": "bun test",
+    "prepublishOnly": "npm run build"
   },
   "devDependencies": {
     "@types/bun": "latest",
-    "oxlint": "^1.35.0"
+    "oxlint": "1.35.0",
+    "tsup": "8.5.1",
+    "typescript": "5.9.3"
   },
   "peerDependencies": {
-    "typescript": "^5"
+    "typescript": "5.9.3"
   }
 }

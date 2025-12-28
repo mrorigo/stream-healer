@@ -75,6 +75,24 @@ curl -X POST http://localhost:1143/v1/chat/completions \
       }
     }
   }'
+### Supported Modes
+
+The proxy supports two modes of healing, activated by `response_format`:
+
+1.  **JSON Schema (`type: 'json_schema'`)**: Enforces strict adherence to a provided JSON schema. Injects missing required fields with defaults if the stream cuts off.
+2.  **JSON Object (`type: 'json_object'`)**: Ensures valid JSON syntax (balancing braces, quotes) without enforcing a specific schema structure. Useful for flexible JSON generation.
+
+**Note**: Requests *without* a `response_format` are passed through untouched.
+
+```bash
+# Example: JSON Object Mode
+curl -X POST http://localhost:1143/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "gemma3:4b",
+    "messages": [{"role": "user", "content": "List fruits"}],
+    "response_format": { "type": "json_object" }
+  }'
 ```
 
 **What happens:**
@@ -435,6 +453,19 @@ bun test
 # Start proxy
 bun run src/index.ts
 ```
+
+## 💡 Inspiration & Comparison
+
+This project is inspired by **[OpenRouter's Response Healing](https://openrouter.ai/docs/guides/features/plugins/response-healing)**, which reduced JSON defect rates by over 80% for models like Gemini and Qwen.
+
+| Feature               | OpenRouter Response Healing       | Stream Healer (This Project)              |
+| :-------------------- | :-------------------------------- | :---------------------------------------- |
+| **Primary Target**    | Server-side API Middleware        | Local Proxy / Client Library              |
+| **Streaming Support** | No (Non-streaming only*)          | **Yes (Streaming-first)**                 |
+| **Mechanism**         | Post-generation repair            | Real-time Chunk Healing                   |
+| **Use Case**          | API Gateways, Production Backends | Local Dev, Edge Functions, Custom Proxies |
+
+*\*As of late 2025, OpenRouter's plugin focused on non-streaming requests. Stream Healer fills the gap for real-time streaming applications.*
 
 ## 📄 License
 
